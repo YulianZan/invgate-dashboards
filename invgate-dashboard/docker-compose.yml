@@ -8,7 +8,10 @@ services:
       INVGATE_USER: "${INVGATE_USER}"
       INVGATE_PASS: "${INVGATE_PASS}"
       DB_PATH: "/data/invgate.db"
-      MAX_WORKERS: "${MAX_WORKERS:-10}"
+      MAX_WORKERS: "${MAX_WORKERS:-3}"
+      HTTP_MAX_RETRIES: "${HTTP_MAX_RETRIES:-6}"
+      REQUEST_DELAY_SECONDS: "${REQUEST_DELAY_SECONDS:-0.25}"
+      RATE_LIMIT_BACKOFF_SECONDS: "${RATE_LIMIT_BACKOFF_SECONDS:-30}"
       CRON_SCHEDULE: "${CRON_SCHEDULE:-0 * * * *}"   # cada hora por defecto
     volumes:
       - db_data:/data

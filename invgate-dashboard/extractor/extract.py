@@ -9,6 +9,10 @@ import sqlite3
 import requests
 import json
 import sys
+import time
+import random
+import threading
+import email.utils
 from datetime import datetime, timezone
 from requests.auth import HTTPBasicAuth
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,7 +22,10 @@ INVGATE_URL = os.environ["INVGATE_URL"]
 USERNAME    = os.environ["INVGATE_USER"]
 PASSWORD    = os.environ["INVGATE_PASS"]
 DB_PATH     = os.environ.get("DB_PATH", "/data/invgate.db")
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 10))
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 3))
+HTTP_MAX_RETRIES = int(os.environ.get("HTTP_MAX_RETRIES", 6))
+REQUEST_DELAY_SECONDS = float(os.environ.get("REQUEST_DELAY_SECONDS", 0.25))
+RATE_LIMIT_BACKOFF_SECONDS = float(os.environ.get("RATE_LIMIT_BACKOFF_SECONDS", 30))
 FORCE_FULL  = "--full" in sys.argv
 
 BASE    = INVGATE_URL.rstrip("/").removesuffix("/api/v1").removesuffix("/api")
@@ -26,8 +33,38 @@ SESSION = requests.Session()
 SESSION.auth   = HTTPBasicAuth(USERNAME, PASSWORD)
 SESSION.verify = True
 
+REQUEST_LOCK = threading.Lock()
+NEXT_REQUEST_AT = 0.0
+
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
+
+def parse_retry_after(value):
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        try:
+            retry_at = email.utils.parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, retry_at.timestamp() - datetime.now(tz=timezone.utc).timestamp())
+        except Exception:
+            return None
+
+
+def wait_for_turn():
+    global NEXT_REQUEST_AT
+    if REQUEST_DELAY_SECONDS <= 0:
+        return
+    with REQUEST_LOCK:
+        now = time.monotonic()
+        wait = max(0.0, NEXT_REQUEST_AT - now)
+        NEXT_REQUEST_AT = max(now, NEXT_REQUEST_AT) + REQUEST_DELAY_SECONDS
+    if wait > 0:
+        time.sleep(wait)
+
 
 def get(endpoint, params=None):
     url     = f"{BASE}/api/v1/{endpoint}"
@@ -38,16 +75,43 @@ def get(endpoint, params=None):
                 encoded.append((f"{k}[]", item))
         else:
             encoded.append((k, v))
-    try:
-        r = SESSION.get(url, params=encoded or None, timeout=30)
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.HTTPError as e:
-        print(f"  [ERROR] {endpoint} -> HTTP {e.response.status_code}: {e.response.text[:150]}")
-        return None
-    except Exception as e:
-        print(f"  [ERROR] {endpoint} -> {e}")
-        return None
+
+    for attempt in range(HTTP_MAX_RETRIES + 1):
+        try:
+            wait_for_turn()
+            r = SESSION.get(url, params=encoded or None, timeout=30)
+            if r.status_code == 429:
+                retry_after = parse_retry_after(r.headers.get("Retry-After"))
+                wait = retry_after if retry_after is not None else RATE_LIMIT_BACKOFF_SECONDS
+                wait = wait + random.uniform(0, 1.5)
+                if attempt < HTTP_MAX_RETRIES:
+                    print(f"  [WARN] {endpoint} -> HTTP 429. Reintento {attempt + 1}/{HTTP_MAX_RETRIES} en {wait:.1f}s")
+                    time.sleep(wait)
+                    continue
+            if 500 <= r.status_code < 600 and attempt < HTTP_MAX_RETRIES:
+                wait = min(60, (2 ** attempt) + random.uniform(0, 1))
+                print(f"  [WARN] {endpoint} -> HTTP {r.status_code}. Reintento {attempt + 1}/{HTTP_MAX_RETRIES} en {wait:.1f}s")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.HTTPError as e:
+            print(f"  [ERROR] {endpoint} -> HTTP {e.response.status_code}: {e.response.text[:150]}")
+            return None
+        except requests.exceptions.RequestException as e:
+            if attempt < HTTP_MAX_RETRIES:
+                wait = min(60, (2 ** attempt) + random.uniform(0, 1))
+                print(f"  [WARN] {endpoint} -> {e}. Reintento {attempt + 1}/{HTTP_MAX_RETRIES} en {wait:.1f}s")
+                time.sleep(wait)
+                continue
+            print(f"  [ERROR] {endpoint} -> {e}")
+            return None
+        except Exception as e:
+            print(f"  [ERROR] {endpoint} -> {e}")
+            return None
+
+    print(f"  [ERROR] {endpoint} -> agotados {HTTP_MAX_RETRIES} reintentos")
+    return None
 
 
 def get_ticket(tid):

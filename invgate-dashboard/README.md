@@ -32,7 +32,7 @@ invgate-dashboard/
 3. Configurar el compose path:
    `invgate-dashboard/docker-compose.yml`
 4. En la pestaña **Environment**, cargar las variables de `.env.example` y completar:
-   `INVGATE_URL`, `INVGATE_USER`, `INVGATE_PASS`, `DASHBOARD_PORT`, `MAX_WORKERS`, `CRON_SCHEDULE`.
+   `INVGATE_URL`, `INVGATE_USER`, `INVGATE_PASS`, `DASHBOARD_PORT`, `MAX_WORKERS`, `HTTP_MAX_RETRIES`, `REQUEST_DELAY_SECONDS`, `RATE_LIMIT_BACKOFF_SECONDS`, `CRON_SCHEDULE`.
 5. Deploy.
 
 Para acceder con dominio desde Dokploy, apuntar el dominio al servicio `nginx` en el puerto interno `80`.
@@ -107,5 +107,18 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 ## Ajustes
 
 - **Frecuencia de extraccion**: cambiar `CRON_SCHEDULE` en `.env`
-- **Hilos paralelos**: cambiar `MAX_WORKERS` en `.env` (default 10)
+- **Hilos paralelos**: cambiar `MAX_WORKERS` en `.env` (default 3)
 - **Puerto del dashboard**: cambiar `DASHBOARD_PORT` en `.env` (default 8080)
+
+## Rate limit de InvGate
+
+Si aparecen errores `HTTP 429: Too many requests`, bajar la velocidad del extractor desde las variables de Dokploy:
+
+```env
+MAX_WORKERS=2
+REQUEST_DELAY_SECONDS=0.5
+RATE_LIMIT_BACKOFF_SECONDS=60
+HTTP_MAX_RETRIES=8
+```
+
+El extractor reintenta automaticamente los 429 y respeta el header `Retry-After` si InvGate lo envia.
