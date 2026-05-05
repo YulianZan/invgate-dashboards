@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InvGate — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg:       #0d0f14;
+    --surface:  #14171f;
+    --surface2: #1c2030;
+    --border:   rgba(255,255,255,0.07);
+    --text:     #e8eaf0;
+    --muted:    #6b7280;
+    --accent:   #4f8ef7;
+    --green:    #34d399;
+    --amber:    #fbbf24;
+    --red:      #f87171;
+    --purple:   #a78bfa;
+    --teal:     #2dd4bf;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 3rem; }
+
+  header {
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  .logo { font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; letter-spacing: .15em; color: var(--accent); text-transform: uppercase; margin-bottom: 6px; }
+  h1 { font-size: 1.65rem; font-weight: 600; letter-spacing: -.02em; }
+  .meta { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; text-align: right; }
+  .meta span { display: block; line-height: 1.8; }
+
+  .refresh-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-family: 'DM Mono', monospace; font-size: 11px; padding: 5px 12px;
+    border-radius: 4px; cursor: pointer; transition: all .15s; margin-top: 6px;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  .kpi { background: var(--surface); padding: 1.25rem 1.5rem; transition: background .15s; }
+  .kpi:hover { background: var(--surface2); }
+  .kpi-label { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .kpi-value { font-size: 2rem; font-weight: 600; line-height: 1; font-family: 'DM Mono', monospace; }
+  .kpi-sub   { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .kpi-value.green  { color: var(--green); }
+  .kpi-value.amber  { color: var(--amber); }
+  .kpi-value.red    { color: var(--red); }
+  .kpi-value.accent { color: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1px; background: var(--border); margin-top: 1px; }
+  .card { background: var(--surface); padding: 1.5rem; }
+  .card:hover { background: var(--surface2); transition: background .15s; }
+  .card.span-4  { grid-column: span 4; }
+  .card.span-5  { grid-column: span 5; }
+  .card.span-6  { grid-column: span 6; }
+  .card.span-7  { grid-column: span 7; }
+  .card.span-8  { grid-column: span 8; }
+  .card.span-12 { grid-column: span 12; }
+  @media (max-width: 900px) { .card { grid-column: span 12 !important; } }
+
+  .card-title { font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.25rem; }
+  .chart-wrap { position: relative; width: 100%; }
+
+  .agent-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .agent-table tr { border-bottom: 1px solid var(--border); }
+  .agent-table tr:last-child { border-bottom: none; }
+  .agent-table td { padding: 7px 0; }
+  .agent-table td:last-child { text-align: right; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); }
+  .bar-bg   { background: var(--border); border-radius: 2px; height: 4px; margin-top: 4px; }
+  .bar-fill { background: var(--accent); height: 4px; border-radius: 2px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 1rem; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .sla-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 1rem 0 .5rem; gap: 2px; }
+  .sla-segment { height: 100%; border-radius: 2px; }
+  .sla-labels { display: flex; justify-content: space-between; font-size: 11px; font-family: 'DM Mono', monospace; }
+
+  .state { display: flex; align-items: center; justify-content: center; min-height: 300px; flex-direction: column; gap: 1rem; color: var(--muted); font-size: 14px; }
+  .state code { font-family: 'DM Mono', monospace; font-size: 12px; background: var(--surface2); padding: 8px 14px; border-radius: 6px; color: var(--red); }
+
+  .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">InvGate Service Management</div>
+    <h1>Dashboard de tickets</h1>
+  </div>
+  <div class="meta">
+    <span id="meta-last-extraction">—</span>
+    <span id="meta-total">—</span>
+    <button class="refresh-btn" onclick="loadData()">↻ Actualizar</button>
+  </div>
+</header>
+
+<div id="root">
+  <div class="state"><div class="spinner"></div><span>Cargando datos...</span></div>
+</div>
+
+<script>
+const PALETTE = { blue:'#4f8ef7', green:'#34d399', amber:'#fbbf24', red:'#f87171', purple:'#a78bfa', teal:'#2dd4bf', coral:'#fb923c', pink:'#f472b6', sky:'#38bdf8', lime:'#a3e635' };
+const COLORS  = Object.values(PALETTE);
+
+Chart.defaults.color       = '#6b7280';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size   = 12;
+
+let chartInstances = {};
+
+function destroyCharts() {
+  Object.values(chartInstances).forEach(c => c.destroy());
+  chartInstances = {};
+}
+
+function makeChart(id, config) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  chartInstances[id] = new Chart(ctx, config);
+  return chartInstances[id];
+}
+
+function buildLegend(containerId, labels, colors) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = labels.map((l, i) => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${colors[i % colors.length]}"></div>
+      <span>${l}</span>
+    </div>`).join('');
+}
+
+function renderDashboard(data) {
+  destroyCharts();
+  const m = data.metrics;
+
+  // Meta header
+  if (data.last_extraction) {
+    const d = new Date(data.last_extraction);
+    document.getElementById('meta-last-extraction').textContent =
+      'Ultima extraccion: ' + d.toLocaleString('es-CL');
+  }
+  document.getElementById('meta-total').textContent =
+    data.total_tickets_in_db.toLocaleString() + ' tickets en DB';
+
+  const totalTickets = Object.values(m.by_status).reduce((a,b)=>a+b,0);
+  const slaTotal     = m.sla.ok + m.sla.breach;
+  const slaPct       = slaTotal > 0 ? Math.round(m.sla.ok    / slaTotal * 100) : 0;
+  const breachPct    = slaTotal > 0 ? Math.round(m.sla.breach / slaTotal * 100) : 0;
+
+  document.getElementById('root').innerHTML = `
+  <div class="kpi-strip">
+    <div class="kpi"><div class="kpi-label">Total tickets</div><div class="kpi-value accent">${totalTickets.toLocaleString()}</div><div class="kpi-sub">en sistema</div></div>
+    <div class="kpi"><div class="kpi-label">Tiempo prom. resolución</div><div class="kpi-value amber">${m.avg_resolution_hours}h</div><div class="kpi-sub">tickets cerrados</div></div>
+    <div class="kpi"><div class="kpi-label">SLA cumplido</div><div class="kpi-value green">${slaPct}%</div><div class="kpi-sub">${m.sla.ok.toLocaleString()} tickets</div></div>
+    <div class="kpi"><div class="kpi-label">SLA breach</div><div class="kpi-value red">${breachPct}%</div><div class="kpi-sub">${m.sla.breach.toLocaleString()} tickets</div></div>
+    <div class="kpi"><div class="kpi-label">Sentimiento positivo</div><div class="kpi-value green">${m.sentiment?.positive ?? '—'}</div><div class="kpi-sub">tickets abiertos</div></div>
+    <div class="kpi"><div class="kpi-label">Sentimiento negativo</div><div class="kpi-value red">${m.sentiment?.negative ?? '—'}</div><div class="kpi-sub">tickets abiertos</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card span-4">
+      <div class="card-title">Por estado</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="c-status" role="img" aria-label="Tickets por estado"></canvas></div>
+      <div class="legend" id="leg-status"></div>
+    </div>
+    <div class="card span-4">
+      <div class="card-title">Por tipo</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="c-type" role="img" aria-label="Tickets por tipo"></canvas></div>
+      <div class="legend" id="leg-type"></div>
+    </div>
+    <div class="card span-4">
+      <div class="card-title">Por prioridad</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="c-priority" role="img" aria-label="Tickets por prioridad"></canvas></div>
+      <div class="legend" id="leg-priority"></div>
+    </div>
+    <div class="card span-8">
+      <div class="card-title">Evolución mensual</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="c-trend" role="img" aria-label="Tickets por mes"></canvas></div>
+    </div>
+    <div class="card span-4">
+      <div class="card-title">Tiempo de resolución</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="c-resolution" role="img" aria-label="Distribucion por tiempo de resolucion"></canvas></div>
+    </div>
+    <div class="card span-6">
+      <div class="card-title">Top categorías</div>
+      <div class="chart-wrap" style="height:${Math.max(200, Object.keys(m.by_category).length * 28)}px">
+        <canvas id="c-category" role="img" aria-label="Tickets por categoria"></canvas></div>
+    </div>
+    <div class="card span-6">
+      <div class="card-title">Carga por helpdesk</div>
+      <div class="chart-wrap" style="height:${Math.max(200, Object.keys(m.by_helpdesk).length * 28)}px">
+        <canvas id="c-helpdesk" role="img" aria-label="Tickets por helpdesk"></canvas></div>
+    </div>
+    <div class="card span-4">
+      <div class="card-title">Cumplimiento SLA</div>
+      <div class="sla-bar">
+        <div class="sla-segment" style="width:${slaPct}%;background:#34d399"></div>
+        <div class="sla-segment" style="width:${breachPct}%;background:#f87171"></div>
+      </div>
+      <div class="sla-labels">
+        <span style="color:#34d399">OK ${slaPct}%</span>
+        <span style="color:#f87171">Breach ${breachPct}%</span>
+      </div>
+      <div style="margin-top:1.5rem">
+        <div class="chart-wrap" style="height:160px"><canvas id="c-sla" role="img" aria-label="SLA donut"></canvas></div>
+      </div>
+    </div>
+    <div class="card span-8">
+      <div class="card-title">Carga por agente</div>
+      <div id="agent-table-wrap"></div>
+    </div>
+  </div>`;
+
+  const donutOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: {
+      label: ctx => ` ${ctx.label}: ${ctx.parsed.toLocaleString()} (${Math.round(ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0)*100)}%)`
+    }}}
+  };
+
+  // Estado
+  const sL = Object.keys(m.by_status), sV = Object.values(m.by_status), sC = COLORS.slice(0,sL.length);
+  makeChart('c-status', { type:'doughnut', data:{ labels:sL, datasets:[{ data:sV, backgroundColor:sC, borderWidth:2, borderColor:'#14171f' }] }, options:donutOpts });
+  buildLegend('leg-status', sL, sC);
+
+  // Tipo
+  const tL = Object.keys(m.by_type), tV = Object.values(m.by_type);
+  const tC = [PALETTE.blue,PALETTE.teal,PALETTE.amber,PALETTE.purple,PALETTE.coral,PALETTE.pink];
+  makeChart('c-type', { type:'doughnut', data:{ labels:tL, datasets:[{ data:tV, backgroundColor:tC, borderWidth:2, borderColor:'#14171f' }] }, options:donutOpts });
+  buildLegend('leg-type', tL, tC);
+
+  // Prioridad
+  const pL = Object.keys(m.by_priority), pV = Object.values(m.by_priority);
+  const pC = [PALETTE.green,PALETTE.blue,PALETTE.amber,PALETTE.red,'#dc2626'];
+  makeChart('c-priority', { type:'doughnut', data:{ labels:pL, datasets:[{ data:pV, backgroundColor:pC, borderWidth:2, borderColor:'#14171f' }] }, options:donutOpts });
+  buildLegend('leg-priority', pL, pC);
+
+  // Tendencia
+  makeChart('c-trend', {
+    type:'line',
+    data:{ labels: Object.keys(m.monthly_trend), datasets:[{ label:'Tickets', data:Object.values(m.monthly_trend),
+      borderColor:PALETTE.blue, backgroundColor:'rgba(79,142,247,0.08)', borderWidth:2,
+      pointBackgroundColor:PALETTE.blue, pointRadius:4, tension:.35, fill:true }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ x:{ ticks:{ maxRotation:45, autoSkip:true, maxTicksLimit:12 } }, y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+
+  // Resolución
+  makeChart('c-resolution', {
+    type:'bar',
+    data:{ labels:Object.keys(m.resolution_buckets), datasets:[{ label:'Tickets', data:Object.values(m.resolution_buckets),
+      backgroundColor:Object.keys(m.resolution_buckets).map((_,i)=>`hsl(${200+i*15},70%,55%)`), borderRadius:4, borderSkipped:false }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+
+  // Categorías horizontal
+  makeChart('c-category', {
+    type:'bar',
+    data:{ labels:Object.keys(m.by_category), datasets:[{ label:'Tickets', data:Object.values(m.by_category),
+      backgroundColor:PALETTE.teal, borderRadius:3, borderSkipped:false }]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } }, y:{ ticks:{ font:{ size:11 } } } } }
+  });
+
+  // Helpdesk horizontal
+  makeChart('c-helpdesk', {
+    type:'bar',
+    data:{ labels:Object.keys(m.by_helpdesk), datasets:[{ label:'Tickets', data:Object.values(m.by_helpdesk),
+      backgroundColor:PALETTE.purple, borderRadius:3, borderSkipped:false }]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } }, y:{ ticks:{ font:{ size:11 } } } } }
+  });
+
+  // SLA donut
+  makeChart('c-sla', {
+    type:'doughnut',
+    data:{ labels:['Cumplido','Breach','Sin SLA'], datasets:[{ data:[m.sla.ok,m.sla.breach,m.sla.unknown||0],
+      backgroundColor:[PALETTE.green,PALETTE.red,'#374151'], borderWidth:2, borderColor:'#14171f' }]},
+    options:donutOpts
+  });
+
+  // Tabla agentes
+  const agentEntries = Object.entries(m.by_agent);
+  const agentMax     = agentEntries[0]?.[1] || 1;
+  const wrap         = document.getElementById('agent-table-wrap');
+  if (wrap) {
+    wrap.innerHTML = `<table class="agent-table">${
+      agentEntries.map(([name, count]) => `
+        <tr>
+          <td><div>${name}</div><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(count/agentMax*100)}%"></div></div></td>
+          <td>${count.toLocaleString()}</td>
+        </tr>`).join('')
+    }</table>`;
+  }
+}
+
+function loadData() {
+  document.getElementById('root').innerHTML =
+    '<div class="state"><div class="spinner"></div><span>Actualizando...</span></div>';
+
+  fetch('/api/metrics')
+    .then(r => {
+      if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`) });
+      return r.json();
+    })
+    .then(renderDashboard)
+    .catch(err => {
+      document.getElementById('root').innerHTML = `
+        <div class="state">
+          <span>No se pudo cargar los datos</span>
+          <code>${err.message}</code>
+          <span style="font-size:12px;max-width:400px;text-align:center;line-height:1.6">
+            Verificá que el extractor completó la carga inicial
+            y que el servicio API está corriendo.
+          </span>
+        </div>`;
+    });
+}
+
+// Auto-refresh cada 5 minutos
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+services:
+
+  extractor:
+    build: ./extractor
+    container_name: invgate_extractor
+    restart: unless-stopped
+    environment:
+      INVGATE_URL: "${INVGATE_URL}"
+      INVGATE_USER: "${INVGATE_USER}"
+      INVGATE_PASS: "${INVGATE_PASS}"
+      DB_PATH: "/data/invgate.db"
+      MAX_WORKERS: "${MAX_WORKERS:-10}"
+      CRON_SCHEDULE: "${CRON_SCHEDULE:-0 * * * *}"   # cada hora por defecto
+    volumes:
+      - db_data:/data
+    networks:
+      - internal
+
+  api:
+    build: ./api
+    container_name: invgate_api
+    restart: unless-stopped
+    environment:
+      DB_PATH: "/data/invgate.db"
+    volumes:
+      - db_data:/data:ro
+    networks:
+      - internal
+    depends_on:
+      - extractor
+
+  nginx:
+    build: ./nginx
+    container_name: invgate_nginx
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    networks:
+      - internal
+    depends_on:
+      - api
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+    driver: bridge
