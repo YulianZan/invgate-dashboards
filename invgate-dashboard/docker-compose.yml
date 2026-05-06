@@ -23,6 +23,7 @@ services:
     restart: unless-stopped
     environment:
       DB_PATH: "/data/invgate.db"
+      AREA_CUSTOM_FIELD_ID: "${AREA_CUSTOM_FIELD_ID:-72}"
     volumes:
       # SQLite en WAL necesita acceso al directorio para archivos -wal/-shm.
       - db_data:/data

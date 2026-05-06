@@ -32,7 +32,7 @@ invgate-dashboard/
 3. Configurar el compose path:
    `invgate-dashboard/docker-compose.yml`
 4. En la pestaña **Environment**, cargar las variables de `.env.example` y completar:
-   `INVGATE_URL`, `INVGATE_USER`, `INVGATE_PASS`, `DASHBOARD_PORT`, `MAX_WORKERS`, `HTTP_MAX_RETRIES`, `REQUEST_DELAY_SECONDS`, `RATE_LIMIT_BACKOFF_SECONDS`, `CRON_SCHEDULE`.
+   `INVGATE_URL`, `INVGATE_USER`, `INVGATE_PASS`, `DASHBOARD_PORT`, `AREA_CUSTOM_FIELD_ID`, `MAX_WORKERS`, `HTTP_MAX_RETRIES`, `REQUEST_DELAY_SECONDS`, `RATE_LIMIT_BACKOFF_SECONDS`, `CRON_SCHEDULE`.
 5. Deploy.
 
 Para acceder con dominio desde Dokploy, apuntar el dominio al servicio `nginx` en el puerto interno `80`.
@@ -109,6 +109,27 @@ GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
 - **Frecuencia de extraccion**: cambiar `CRON_SCHEDULE` en `.env`
 - **Hilos paralelos**: cambiar `MAX_WORKERS` en `.env` (default 3)
 - **Puerto del dashboard**: cambiar `DASHBOARD_PORT` en `.env` (default 8080)
+- **Campo personalizado de area**: cambiar `AREA_CUSTOM_FIELD_ID` en `.env` (default 72)
+
+## API de metricas
+
+La API interna filtra sobre SQLite, no consulta InvGate en vivo:
+
+```bash
+# Historico completo
+curl "http://localhost:8080/api/metrics?period=historical"
+
+# Dia actual
+curl "http://localhost:8080/api/metrics?period=daily"
+
+# Semana calendario actual
+curl "http://localhost:8080/api/metrics?period=weekly"
+
+# Mes actual filtrado por area
+curl "http://localhost:8080/api/metrics?period=monthly&area_id=46F4F3AC"
+```
+
+Las areas salen desde `raw_json.custom_fields[AREA_CUSTOM_FIELD_ID]`, por ejemplo `custom_fields["72"]`.
 
 ## Rate limit de InvGate
 
