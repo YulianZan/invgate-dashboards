@@ -79,6 +79,13 @@ def period_bounds(period, now=None):
         previous_end = start
         previous_month_day = start - timedelta(days=1)
         previous_start = previous_month_day.replace(day=1)
+    elif period == "prev_month":
+        today_first = today.replace(day=1)
+        start = (today_first - timedelta(days=1)).replace(day=1)
+        end = today_first
+        previous_end = start
+        previous_start = (start - timedelta(days=1)).replace(day=1)
+        return int(start.timestamp()), int(end.timestamp()), int(previous_start.timestamp()), int(previous_end.timestamp())
     elif period == "historical":
         return None, None, None, None
     else:
@@ -127,7 +134,7 @@ def percent_delta(current, previous):
 def trend_key(epoch, period):
     if period == "daily":
         return to_hour(epoch)
-    if period in ("weekly", "monthly"):
+    if period in ("weekly", "monthly", "prev_month", "custom"):
         return to_day(epoch)
     return to_month(epoch)
 
@@ -250,12 +257,28 @@ def metrics():
     if not os.path.exists(DB_PATH):
         return unavailable("DB no disponible aun, espera la carga inicial")
 
+    period = request.args.get("period", "historical").lower()
+    area_id = request.args.get("area_id")
+
+    if period == "custom":
+        date_from = request.args.get("date_from")
+        date_to = request.args.get("date_to")
+        if not date_from or not date_to:
+            return jsonify({"error": "date_from y date_to son requeridos para period=custom"}), 400
+        try:
+            start = int(datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+            end   = int((datetime.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)).timestamp())
+        except ValueError:
+            return jsonify({"error": "Formato de fecha invalido, usar YYYY-MM-DD"}), 400
+        previous_start = previous_end = None
+    else:
+        try:
+            start, end, previous_start, previous_end = period_bounds(period)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
     con = None
     try:
-        period = request.args.get("period", "historical").lower()
-        area_id = request.args.get("area_id")
-        start, end, previous_start, previous_end = period_bounds(period)
-
         con = get_con()
         lkp = load_lookups(con)
 
@@ -286,8 +309,6 @@ def metrics():
     except sqlite3.OperationalError as e:
         app.logger.warning("SQLite no disponible: %s", e)
         return unavailable("DB no disponible temporalmente, reintenta en unos segundos")
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
     finally:
         if con:
             con.close()

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>InvGate - Dashboard</title>
+<title>BDO - Dashboard ITSM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -86,16 +86,23 @@
   }
 
   .toolbar {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 18px;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 14px;
     box-shadow: var(--shadow);
     margin-bottom: 18px;
+  }
+
+  .toolbar-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
   }
 
   .periods { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -253,6 +260,82 @@
 
   .exporting .toolbar, .exporting .active-filter, .exporting .tool-actions { box-shadow: none; }
 
+  /* BDO branding */
+  .brand-header { display: flex; align-items: center; gap: 20px; }
+  .brand-logo { height: 44px; width: auto; display: block; }
+
+  /* Date range row */
+  .date-range-row {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .date-range-row.visible { display: flex; }
+  .date-input {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 7px;
+    padding: 10px 12px;
+    font: inherit;
+    font-weight: 600;
+  }
+
+  /* Edit mode */
+  .kpi { position: relative; }
+  .panel { position: relative; }
+  .editable { outline: 2px dashed var(--blue); outline-offset: 3px; }
+  .hide-panel-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--red);
+    color: #fff;
+    border: none;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+  }
+  .tool-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+  /* Edit bar */
+  .edit-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-strong);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .edit-bar.visible { display: flex; }
+  .edit-bar-info { color: var(--muted); font-size: 14px; font-weight: 700; flex-grow: 1; }
+  .view-name-input {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 7px;
+    padding: 10px 12px;
+    font: inherit;
+    font-weight: 600;
+    width: 200px;
+  }
+
   @media (max-width: 1280px) {
     .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 6; }
@@ -261,7 +344,8 @@
   @media (max-width: 860px) {
     body { font-size: 16px; }
     .shell { padding: 18px; }
-    .topbar, .toolbar { grid-template-columns: 1fr; }
+    .topbar { grid-template-columns: 1fr; }
+    .toolbar-top { flex-direction: column; align-items: flex-start; }
     .meta { text-align: left; }
     .tool-actions { justify-content: flex-start; }
     select { min-width: 100%; }
@@ -276,9 +360,12 @@
 <body>
 <div class="shell" id="capture-root">
   <header class="topbar">
-    <div>
-      <div class="brand">InvGate Service Management</div>
-      <h1>Dashboard de tickets</h1>
+    <div class="brand-header">
+      <img class="brand-logo" src="https://cdn.bdo.global/images/bdo_logo/1.0.0/bdo_logo_color.png" alt="BDO" crossorigin="anonymous">
+      <div>
+        <div class="brand">Service Management · ITSM</div>
+        <h1>Dashboard de tickets</h1>
+      </div>
     </div>
     <div class="meta">
       <span id="meta-last-extraction">Ultima extraccion: -</span>
@@ -288,22 +375,45 @@
   </header>
 
   <section class="toolbar" aria-label="Filtros del dashboard">
-    <div class="periods" id="periods"></div>
-    <div class="tool-actions">
-      <div class="select-wrap">
-        <label for="area-select">Area</label>
-        <select id="area-select" onchange="setArea(this.value)">
-          <option value="">Todas las areas</option>
-        </select>
+    <div class="toolbar-top">
+      <div class="periods" id="periods"></div>
+      <div class="tool-actions">
+        <div class="select-wrap">
+          <label for="area-select">Area</label>
+          <select id="area-select" onchange="setArea(this.value)">
+            <option value="">Todas las areas</option>
+          </select>
+        </div>
+        <div class="select-wrap" id="views-select-wrap" style="display:none">
+          <label for="views-select">Vista</label>
+          <select id="views-select" onchange="loadView(this.value)">
+            <option value="">Vista por defecto</option>
+          </select>
+        </div>
+        <button class="tool-btn" type="button" onclick="loadData()">Actualizar</button>
+        <button class="tool-btn" id="edit-mode-btn" type="button" onclick="toggleEditMode()">Configurar vista</button>
+        <button class="tool-btn primary" type="button" onclick="exportPdf()">Exportar PDF</button>
       </div>
-      <button class="tool-btn" type="button" onclick="loadData()">Actualizar</button>
-      <button class="tool-btn primary" type="button" onclick="exportPdf()">Exportar PDF</button>
+    </div>
+    <div class="date-range-row" id="date-range-row">
+      <label for="date-from">Desde</label>
+      <input type="date" id="date-from" class="date-input">
+      <label for="date-to">Hasta</label>
+      <input type="date" id="date-to" class="date-input">
+      <button class="tool-btn" type="button" onclick="applyCustomRange()">Aplicar</button>
     </div>
   </section>
 
   <div class="active-filter" id="active-filter">
     <span id="active-filter-text"></span>
     <button class="clear-btn" type="button" onclick="setArea('')">Limpiar</button>
+  </div>
+
+  <div class="edit-bar" id="edit-bar">
+    <span class="edit-bar-info">Modo edición · clic en × para ocultar paneles</span>
+    <button class="tool-btn" type="button" onclick="showAllPanels()">Mostrar todos</button>
+    <input type="text" class="view-name-input" id="view-name-input" placeholder="Nombre de la vista...">
+    <button class="tool-btn" type="button" onclick="saveCurrentView()">Guardar vista</button>
   </div>
 
   <main id="root">
@@ -316,7 +426,9 @@ const PERIODS = [
   { id: 'daily', label: 'Diario' },
   { id: 'weekly', label: 'Semanal' },
   { id: 'monthly', label: 'Mensual' },
+  { id: 'prev_month', label: 'Mes Anterior' },
   { id: 'historical', label: 'Historico' },
+  { id: 'custom', label: 'Rango' },
 ];
 
 const COLORS = {
@@ -325,7 +437,7 @@ const COLORS = {
 };
 const SERIES = [COLORS.blue, COLORS.teal, COLORS.amber, COLORS.purple, COLORS.coral, COLORS.green, COLORS.red, COLORS.sky, COLORS.slate];
 
-const state = { period: 'daily', areaId: '', areaName: '', areas: [], lastData: null, exporting: false };
+const state = { period: 'daily', areaId: '', areaName: '', areas: [], lastData: null, exporting: false, dateFrom: '', dateTo: '', hiddenPanels: new Set(), savedViews: [], activeView: null, editMode: false };
 let chartInstances = {};
 
 Chart.defaults.color = '#64748b';
@@ -347,6 +459,8 @@ function escapeHtml(value) {
 }
 
 function periodLabel() {
+  if (state.period === 'custom' && state.dateFrom && state.dateTo)
+    return `${state.dateFrom} – ${state.dateTo}`;
   return PERIODS.find(p => p.id === state.period)?.label || 'Historico';
 }
 
@@ -430,7 +544,17 @@ function renderPeriodButtons() {
 function setPeriod(period) {
   state.period = period;
   renderPeriodButtons();
-  loadData();
+  const row = document.getElementById('date-range-row');
+  if (row) row.classList.toggle('visible', period === 'custom');
+  if (period === 'custom') {
+    const today = new Date().toISOString().slice(0, 10);
+    const fromEl = document.getElementById('date-from');
+    const toEl = document.getElementById('date-to');
+    if (fromEl && !fromEl.value) fromEl.value = today.slice(0, 7) + '-01';
+    if (toEl && !toEl.value) toEl.value = today;
+  } else {
+    loadData();
+  }
 }
 
 function setArea(areaId) {
@@ -463,9 +587,12 @@ function updateActiveFilter() {
   }
 }
 
-function kpi(label, value, sub, tone) {
+function kpi(id, label, value, sub, tone) {
+  if (state.hiddenPanels.has(id)) return '';
+  const hideBtn = state.editMode ? `<button class="hide-panel-btn" onclick="hidePanel('${id}')" title="Ocultar">×</button>` : '';
   return `
-    <div class="kpi ${tone || ''}">
+    <div class="kpi ${tone || ''} ${state.editMode ? 'editable' : ''}" data-panel="${id}">
+      ${hideBtn}
       <div class="kpi-label">${escapeHtml(label)}</div>
       <div class="kpi-value">${escapeHtml(value)}</div>
       <div class="kpi-sub">${escapeHtml(sub)}</div>
@@ -473,12 +600,15 @@ function kpi(label, value, sub, tone) {
   `;
 }
 
-function panel(title, note, span, body) {
+function panel(id, title, note, span, body) {
+  if (state.hiddenPanels.has(id)) return '';
+  const hideBtn = state.editMode ? `<button class="hide-panel-btn" onclick="hidePanel('${id}')" title="Ocultar">×</button>` : '';
   return `
-    <section class="panel ${span}">
+    <section class="panel ${span} ${state.editMode ? 'editable' : ''}" data-panel="${id}">
       <div class="panel-head">
         <h2 class="panel-title">${escapeHtml(title)}</h2>
         <span class="panel-note">${escapeHtml(note || '')}</span>
+        ${hideBtn}
       </div>
       ${body}
     </section>
@@ -507,24 +637,24 @@ function renderDashboard(data) {
   document.getElementById('root').innerHTML = `
     <section class="dashboard" id="dashboard">
       <div class="kpis">
-        ${kpi(`Creados ${period}`, fmt(s.created_in_period), comparisonText('created_delta_pct'), 'blue')}
-        ${kpi(`Cerrados ${period}`, fmt(s.closed_in_period), comparisonText('closed_delta_pct'), 'green')}
-        ${kpi(`Solucionados ${period}`, fmt(s.solved_in_period), comparisonText('solved_delta_pct'), 'teal')}
-        ${kpi('Abiertos ahora', fmt(s.open_now), areaText, 'amber')}
-        ${kpi('SLA breach', fmt(s.sla_breach), comparisonText('sla_breach_delta_pct'), 'red')}
-        ${kpi('Resolucion prom.', `${fmt(s.avg_resolution_hours)}h`, comparisonText('avg_resolution_delta_pct'), 'purple')}
+        ${kpi('kpi-created', `Creados ${period}`, fmt(s.created_in_period), comparisonText('created_delta_pct'), 'blue')}
+        ${kpi('kpi-closed', `Cerrados ${period}`, fmt(s.closed_in_period), comparisonText('closed_delta_pct'), 'green')}
+        ${kpi('kpi-solved', `Solucionados ${period}`, fmt(s.solved_in_period), comparisonText('solved_delta_pct'), 'teal')}
+        ${kpi('kpi-open', 'Abiertos ahora', fmt(s.open_now), areaText, 'amber')}
+        ${kpi('kpi-sla', 'SLA breach', fmt(s.sla_breach), comparisonText('sla_breach_delta_pct'), 'red')}
+        ${kpi('kpi-resolution', 'Resolucion prom.', `${fmt(s.avg_resolution_hours)}h`, comparisonText('avg_resolution_delta_pct'), 'purple')}
       </div>
 
       <div class="grid">
-        ${panel('Tendencia', periodLabel(), 'span-8', '<div class="chart-wrap"><canvas id="c-trend"></canvas></div>')}
-        ${panel('SLA', `${slaPct}% cumplido`, 'span-4', '<div class="chart-wrap"><canvas id="c-sla"></canvas></div>')}
-        ${panel('Tickets por area', 'Click para filtrar', 'span-6', '<div class="chart-wrap tall"><canvas id="c-area"></canvas></div>')}
-        ${panel('Tickets por estado', '', 'span-6', '<div class="chart-wrap tall"><canvas id="c-status"></canvas></div>')}
-        ${panel('Prioridad', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-priority"></canvas></div>')}
-        ${panel('Tipo', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-type"></canvas></div>')}
-        ${panel('Resolucion', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-resolution"></canvas></div>')}
-        ${panel('Top categorias', '', 'span-7', '<div class="chart-wrap tall"><canvas id="c-category"></canvas></div>')}
-        ${panel('Carga por agente', '', 'span-5', '<div id="agent-table-wrap"></div>')}
+        ${panel('panel-trend', 'Tendencia', periodLabel(), 'span-8', '<div class="chart-wrap"><canvas id="c-trend"></canvas></div>')}
+        ${panel('panel-sla', 'SLA', `${slaPct}% cumplido`, 'span-4', '<div class="chart-wrap"><canvas id="c-sla"></canvas></div>')}
+        ${panel('panel-area', 'Tickets por area', 'Click para filtrar', 'span-6', '<div class="chart-wrap tall"><canvas id="c-area"></canvas></div>')}
+        ${panel('panel-status', 'Tickets por estado', '', 'span-6', '<div class="chart-wrap tall"><canvas id="c-status"></canvas></div>')}
+        ${panel('panel-priority', 'Prioridad', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-priority"></canvas></div>')}
+        ${panel('panel-type', 'Tipo', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-type"></canvas></div>')}
+        ${panel('panel-resolution', 'Resolucion', '', 'span-4', '<div class="chart-wrap short"><canvas id="c-resolution"></canvas></div>')}
+        ${panel('panel-categories', 'Top categorias', '', 'span-7', '<div class="chart-wrap tall"><canvas id="c-category"></canvas></div>')}
+        ${panel('panel-agents', 'Carga por agente', '', 'span-5', '<div id="agent-table-wrap"></div>')}
       </div>
     </section>
   `;
@@ -608,13 +738,94 @@ function renderAgents(byAgent) {
   `).join('')}</table>`;
 }
 
+// ----- Vistas guardadas -----
+const VIEWS_KEY = 'invgate_saved_views';
+
+function initViews() {
+  try { state.savedViews = JSON.parse(localStorage.getItem(VIEWS_KEY) || '[]'); } catch { state.savedViews = []; }
+  renderViewsSelect();
+}
+
+function renderViewsSelect() {
+  const wrap = document.getElementById('views-select-wrap');
+  const sel = document.getElementById('views-select');
+  if (!wrap || !sel) return;
+  wrap.style.display = state.savedViews.length > 0 ? 'flex' : 'none';
+  sel.innerHTML = '<option value="">Vista por defecto</option>' +
+    state.savedViews.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join('');
+  if (state.activeView) sel.value = state.activeView;
+}
+
+function loadView(name) {
+  state.activeView = name || null;
+  const view = state.savedViews.find(v => v.name === name);
+  state.hiddenPanels = new Set(view ? view.hiddenPanels : []);
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+function saveCurrentView() {
+  const input = document.getElementById('view-name-input');
+  const name = (input?.value || '').trim();
+  if (!name) return;
+  const existing = state.savedViews.findIndex(v => v.name === name);
+  const entry = { name, hiddenPanels: [...state.hiddenPanels] };
+  if (existing >= 0) state.savedViews[existing] = entry;
+  else state.savedViews.push(entry);
+  localStorage.setItem(VIEWS_KEY, JSON.stringify(state.savedViews));
+  state.activeView = name;
+  if (input) input.value = '';
+  renderViewsSelect();
+  toggleEditMode();
+}
+
+function showAllPanels() {
+  state.hiddenPanels = new Set();
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+function hidePanel(id) {
+  state.hiddenPanels.add(id);
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+function toggleEditMode() {
+  state.editMode = !state.editMode;
+  const btn = document.getElementById('edit-mode-btn');
+  const bar = document.getElementById('edit-bar');
+  if (btn) { btn.textContent = state.editMode ? 'Salir de edición' : 'Configurar vista'; btn.classList.toggle('active', state.editMode); }
+  if (bar) bar.classList.toggle('visible', state.editMode);
+  if (state.editMode && state.activeView) {
+    const input = document.getElementById('view-name-input');
+    if (input) input.value = state.activeView;
+  }
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+// ----- Rango de fechas custom -----
+function applyCustomRange() {
+  const from = document.getElementById('date-from')?.value;
+  const to = document.getElementById('date-to')?.value;
+  if (!from || !to || from > to) return;
+  state.dateFrom = from;
+  state.dateTo = to;
+  loadData();
+}
+
 function buildUrl() {
   const params = new URLSearchParams({ period: state.period });
   if (state.areaId) params.set('area_id', state.areaId);
+  if (state.period === 'custom' && state.dateFrom && state.dateTo) {
+    params.set('date_from', state.dateFrom);
+    params.set('date_to', state.dateTo);
+  }
   return `/api/metrics?${params.toString()}`;
 }
 
 function loadData() {
+  if (state.period === 'custom' && (!state.dateFrom || !state.dateTo)) {
+    renderPeriodButtons();
+    return;
+  }
   renderPeriodButtons();
   document.getElementById('root').innerHTML = '<div class="state"><div class="state-inner"><div class="spinner"></div><span>Actualizando...</span></div></div>';
   fetch(buildUrl())
@@ -662,13 +873,14 @@ async function exportPdf() {
       page += 1;
     }
 
-    pdf.save(`invgate-dashboard-${state.period}.pdf`);
+    pdf.save(`bdo-itsm-dashboard-${state.period}.pdf`);
   } finally {
     document.body.classList.remove('exporting');
     state.exporting = false;
   }
 }
 
+initViews();
 renderPeriodButtons();
 loadData();
 setInterval(loadData, 5 * 60 * 1000);
