@@ -39,7 +39,7 @@
     font-size: 18px;
   }
 
-  button, select { font: inherit; }
+  button, select, input { font: inherit; }
   button { cursor: pointer; }
 
   .shell {
@@ -131,6 +131,16 @@
   select {
     min-width: 300px;
     max-width: 520px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 7px;
+    padding: 11px 14px;
+    font-weight: 600;
+  }
+  .email-input {
+    min-width: 260px;
+    max-width: 360px;
     border: 1px solid var(--border);
     background: #fff;
     color: var(--text);
@@ -325,6 +335,30 @@
   }
   .edit-bar.visible { display: flex; }
   .edit-bar-info { color: var(--muted); font-size: 14px; font-weight: 700; flex-grow: 1; }
+  .edit-fields {
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .field-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    color: var(--text);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .field-toggle input { width: 16px; height: 16px; }
   .view-name-input {
     border: 1px solid var(--border);
     background: #fff;
@@ -384,6 +418,10 @@
             <option value="">Todas las areas</option>
           </select>
         </div>
+        <div class="select-wrap">
+          <label for="user-email">Usuario</label>
+          <input type="email" id="user-email" class="email-input" placeholder="correo@empresa.com" onchange="setUserEmail(this.value)" onblur="setUserEmail(this.value)">
+        </div>
         <div class="select-wrap" id="views-select-wrap" style="display:none">
           <label for="views-select">Vista</label>
           <select id="views-select" onchange="loadView(this.value)">
@@ -414,6 +452,8 @@
     <button class="tool-btn" type="button" onclick="showAllPanels()">Mostrar todos</button>
     <input type="text" class="view-name-input" id="view-name-input" placeholder="Nombre de la vista...">
     <button class="tool-btn" type="button" onclick="saveCurrentView()">Guardar vista</button>
+    <button class="tool-btn" type="button" onclick="deleteCurrentView()">Borrar vista</button>
+    <div class="edit-fields" id="edit-fields"></div>
   </div>
 
   <main id="root">
@@ -431,13 +471,31 @@ const PERIODS = [
   { id: 'custom', label: 'Rango' },
 ];
 
+const PANEL_DEFS = [
+  { id: 'kpi-created', label: 'Creados' },
+  { id: 'kpi-closed', label: 'Cerrados' },
+  { id: 'kpi-solved', label: 'Solucionados' },
+  { id: 'kpi-open', label: 'Abiertos ahora' },
+  { id: 'kpi-sla', label: 'SLA breach' },
+  { id: 'kpi-resolution', label: 'Resolucion prom.' },
+  { id: 'panel-trend', label: 'Tendencia' },
+  { id: 'panel-sla', label: 'SLA' },
+  { id: 'panel-area', label: 'Tickets por area' },
+  { id: 'panel-status', label: 'Tickets por estado' },
+  { id: 'panel-priority', label: 'Prioridad' },
+  { id: 'panel-type', label: 'Tipo' },
+  { id: 'panel-resolution', label: 'Resolucion' },
+  { id: 'panel-categories', label: 'Top categorias' },
+  { id: 'panel-agents', label: 'Carga por agente' },
+];
+
 const COLORS = {
   blue: '#2563eb', teal: '#0f766e', green: '#15803d', amber: '#b7791f',
   red: '#b91c1c', purple: '#7c3aed', coral: '#c2410c', sky: '#0284c7', slate: '#475569'
 };
 const SERIES = [COLORS.blue, COLORS.teal, COLORS.amber, COLORS.purple, COLORS.coral, COLORS.green, COLORS.red, COLORS.sky, COLORS.slate];
 
-const state = { period: 'daily', areaId: '', areaName: '', areas: [], lastData: null, exporting: false, dateFrom: '', dateTo: '', hiddenPanels: new Set(), savedViews: [], activeView: null, editMode: false };
+const state = { period: 'daily', areaId: '', areaName: '', areas: [], lastData: null, exporting: false, dateFrom: '', dateTo: '', hiddenPanels: new Set(), savedViews: [], activeView: null, editMode: false, userEmail: '' };
 let chartInstances = {};
 
 Chart.defaults.color = '#64748b';
@@ -456,6 +514,10 @@ function pct(value) {
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+}
+
+function validEmail(value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(value || '').trim());
 }
 
 function periodLabel() {
@@ -661,6 +723,7 @@ function renderDashboard(data) {
 
   renderCharts(m);
   renderAgents(m.by_agent || {});
+  renderEditPanelList();
 }
 
 function renderCharts(m) {
@@ -740,10 +803,40 @@ function renderAgents(byAgent) {
 
 // ----- Vistas guardadas -----
 const VIEWS_KEY = 'invgate_saved_views';
+const USER_EMAIL_KEY = 'invgate_user_email';
 
-function initViews() {
-  try { state.savedViews = JSON.parse(localStorage.getItem(VIEWS_KEY) || '[]'); } catch { state.savedViews = []; }
+function localViewsKey() {
+  return state.userEmail ? `${VIEWS_KEY}:${state.userEmail}` : VIEWS_KEY;
+}
+
+function normalizeView(raw) {
+  return {
+    name: raw.name,
+    hiddenPanels: raw.hiddenPanels || raw.config?.hiddenPanels || [],
+  };
+}
+
+async function initViews() {
+  state.userEmail = (localStorage.getItem(USER_EMAIL_KEY) || '').trim().toLowerCase();
+  const emailInput = document.getElementById('user-email');
+  if (emailInput) emailInput.value = state.userEmail;
+  await loadViewsForUser();
   renderViewsSelect();
+}
+
+async function loadViewsForUser() {
+  if (state.userEmail && validEmail(state.userEmail)) {
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(state.userEmail)}/views`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      state.savedViews = (payload.views || []).map(normalizeView);
+      return;
+    } catch (error) {
+      console.warn('No se pudieron cargar vistas remotas, usando respaldo local', error);
+    }
+  }
+  try { state.savedViews = JSON.parse(localStorage.getItem(localViewsKey()) || '[]').map(normalizeView); } catch { state.savedViews = []; }
 }
 
 function renderViewsSelect() {
@@ -753,7 +846,7 @@ function renderViewsSelect() {
   wrap.style.display = state.savedViews.length > 0 ? 'flex' : 'none';
   sel.innerHTML = '<option value="">Vista por defecto</option>' +
     state.savedViews.map(v => `<option value="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join('');
-  if (state.activeView) sel.value = state.activeView;
+  sel.value = state.activeView || '';
 }
 
 function loadView(name) {
@@ -763,19 +856,60 @@ function loadView(name) {
   if (state.lastData) renderDashboard(state.lastData);
 }
 
-function saveCurrentView() {
+async function setUserEmail(value) {
+  const email = (value || '').trim().toLowerCase();
+  if (email && !validEmail(email)) return;
+  state.userEmail = email;
+  localStorage.setItem(USER_EMAIL_KEY, email);
+  state.activeView = null;
+  state.hiddenPanels = new Set();
+  await loadViewsForUser();
+  renderViewsSelect();
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+function currentViewConfig() {
+  return { hiddenPanels: [...state.hiddenPanels] };
+}
+
+async function saveCurrentView() {
   const input = document.getElementById('view-name-input');
   const name = (input?.value || '').trim();
   if (!name) return;
-  const existing = state.savedViews.findIndex(v => v.name === name);
-  const entry = { name, hiddenPanels: [...state.hiddenPanels] };
-  if (existing >= 0) state.savedViews[existing] = entry;
-  else state.savedViews.push(entry);
-  localStorage.setItem(VIEWS_KEY, JSON.stringify(state.savedViews));
+  const entry = { name, ...currentViewConfig() };
+  if (state.userEmail && validEmail(state.userEmail)) {
+    await fetch(`/api/users/${encodeURIComponent(state.userEmail)}/views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, config: currentViewConfig() }),
+    });
+    await loadViewsForUser();
+  } else {
+    const existing = state.savedViews.findIndex(v => v.name === name);
+    if (existing >= 0) state.savedViews[existing] = entry;
+    else state.savedViews.push(entry);
+    localStorage.setItem(localViewsKey(), JSON.stringify(state.savedViews));
+  }
   state.activeView = name;
   if (input) input.value = '';
   renderViewsSelect();
   toggleEditMode();
+}
+
+async function deleteCurrentView() {
+  if (!state.activeView) return;
+  const name = state.activeView;
+  if (state.userEmail && validEmail(state.userEmail)) {
+    await fetch(`/api/users/${encodeURIComponent(state.userEmail)}/views/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    await loadViewsForUser();
+  } else {
+    state.savedViews = state.savedViews.filter(v => v.name !== name);
+    localStorage.setItem(localViewsKey(), JSON.stringify(state.savedViews));
+  }
+  state.activeView = null;
+  state.hiddenPanels = new Set();
+  renderViewsSelect();
+  if (state.lastData) renderDashboard(state.lastData);
 }
 
 function showAllPanels() {
@@ -786,6 +920,23 @@ function showAllPanels() {
 function hidePanel(id) {
   state.hiddenPanels.add(id);
   if (state.lastData) renderDashboard(state.lastData);
+}
+
+function setPanelVisible(id, visible) {
+  if (visible) state.hiddenPanels.delete(id);
+  else state.hiddenPanels.add(id);
+  if (state.lastData) renderDashboard(state.lastData);
+}
+
+function renderEditPanelList() {
+  const wrap = document.getElementById('edit-fields');
+  if (!wrap) return;
+  wrap.innerHTML = PANEL_DEFS.map(item => `
+    <label class="field-toggle">
+      <input type="checkbox" ${state.hiddenPanels.has(item.id) ? '' : 'checked'} onchange="setPanelVisible('${item.id}', this.checked)">
+      <span>${escapeHtml(item.label)}</span>
+    </label>
+  `).join('');
 }
 
 function toggleEditMode() {
@@ -799,6 +950,7 @@ function toggleEditMode() {
     if (input) input.value = state.activeView;
   }
   if (state.lastData) renderDashboard(state.lastData);
+  renderEditPanelList();
 }
 
 // ----- Rango de fechas custom -----

@@ -6,6 +6,7 @@ API minimalista que lee SQLite y expone /api/metrics para el dashboard.
 import os
 import sqlite3
 import json
+import re
 from datetime import datetime, time, timedelta, timezone
 from collections import defaultdict
 from flask import Flask, jsonify, request
@@ -14,11 +15,51 @@ DB_PATH = os.environ.get("DB_PATH", "/data/invgate.db")
 AREA_CUSTOM_FIELD_ID = os.environ.get("AREA_CUSTOM_FIELD_ID", "72")
 app     = Flask(__name__)
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 
 def get_con():
     con = sqlite3.connect(DB_PATH, timeout=30)
     con.row_factory = sqlite3.Row
     return con
+
+
+def init_app_db(con):
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS dashboard_users (
+            email       TEXT PRIMARY KEY,
+            created_at  TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS dashboard_views (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email  TEXT NOT NULL,
+            name        TEXT NOT NULL,
+            config_json TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            UNIQUE(user_email, name),
+            FOREIGN KEY(user_email) REFERENCES dashboard_users(email) ON DELETE CASCADE
+        );
+    """)
+    con.commit()
+
+
+def normalize_email(value):
+    email = (value or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        return None
+    return email
+
+
+def ensure_user(con, email):
+    now = datetime.now(tz=timezone.utc).isoformat()
+    con.execute("""
+        INSERT INTO dashboard_users (email, created_at, last_seen_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(email) DO UPDATE SET last_seen_at = excluded.last_seen_at
+    """, (email, now, now))
 
 
 def unavailable(message):
@@ -372,6 +413,89 @@ def health():
         except Exception:
             pass
     return jsonify({"status": "ok", "db_exists": exists, "tickets": count})
+
+
+@app.route("/api/users/<path:email>/views", methods=["GET"])
+def list_views(email):
+    email = normalize_email(email)
+    if not email:
+        return jsonify({"error": "correo invalido"}), 400
+
+    con = None
+    try:
+        con = get_con()
+        init_app_db(con)
+        ensure_user(con, email)
+        con.commit()
+        rows = con.execute("""
+            SELECT name, config_json, updated_at
+            FROM dashboard_views
+            WHERE user_email = ?
+            ORDER BY lower(name)
+        """, (email,)).fetchall()
+        views = []
+        for row in rows:
+            try:
+                config = json.loads(row["config_json"])
+            except Exception:
+                config = {}
+            views.append({"name": row["name"], "config": config, "updated_at": row["updated_at"]})
+        return jsonify({"email": email, "views": views})
+    finally:
+        if con:
+            con.close()
+
+
+@app.route("/api/users/<path:email>/views", methods=["POST"])
+def save_view(email):
+    email = normalize_email(email)
+    if not email:
+        return jsonify({"error": "correo invalido"}), 400
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    config = payload.get("config") or {}
+    if not name:
+        return jsonify({"error": "name es requerido"}), 400
+    if not isinstance(config, dict):
+        return jsonify({"error": "config debe ser un objeto"}), 400
+
+    con = None
+    try:
+        con = get_con()
+        init_app_db(con)
+        ensure_user(con, email)
+        now = datetime.now(tz=timezone.utc).isoformat()
+        con.execute("""
+            INSERT INTO dashboard_views (user_email, name, config_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_email, name) DO UPDATE SET
+                config_json = excluded.config_json,
+                updated_at = excluded.updated_at
+        """, (email, name, json.dumps(config, ensure_ascii=False), now, now))
+        con.commit()
+        return jsonify({"email": email, "view": {"name": name, "config": config, "updated_at": now}})
+    finally:
+        if con:
+            con.close()
+
+
+@app.route("/api/users/<path:email>/views/<path:name>", methods=["DELETE"])
+def delete_view(email, name):
+    email = normalize_email(email)
+    if not email:
+        return jsonify({"error": "correo invalido"}), 400
+
+    con = None
+    try:
+        con = get_con()
+        init_app_db(con)
+        con.execute("DELETE FROM dashboard_views WHERE user_email = ? AND name = ?", (email, name))
+        con.commit()
+        return jsonify({"email": email, "deleted": name})
+    finally:
+        if con:
+            con.close()
 
 
 if __name__ == "__main__":
